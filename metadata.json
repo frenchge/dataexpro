@@ -1,0 +1,6 @@
+
+{
+  "name": "DataExtract Pro",
+  "description": "A sophisticated tool to extract structured data from PDFs and web content using Gemini AI, with a built-in editable spreadsheet view.",
+  "requestFramePermissions": []
+}
