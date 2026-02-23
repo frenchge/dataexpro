@@ -1,6 +1,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useMutation, useQuery } from "convex/react";
+import { UserButton } from '@clerk/clerk-react';
 import { api } from "./convex/_generated/api";
 import type { Id } from "./convex/_generated/dataModel";
 import ExtractorForm from './components/ExtractorForm';
@@ -11,23 +12,6 @@ import { extractContent, reExtractForRecord, fetchUrlContent, extractFromUrl, is
 import { ExtractionRecord, ColumnDefinition, AppState, SyncSettings, SyncStatus } from './types';
 
 const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return sessionStorage.getItem('dataxpro_auth') === 'true';
-  });
-  const [passwordInput, setPasswordInput] = useState('');
-  const [authError, setAuthError] = useState(false);
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passwordInput === '02050205') {
-      setIsAuthenticated(true);
-      sessionStorage.setItem('dataxpro_auth', 'true');
-      setAuthError(false);
-    } else {
-      setAuthError(true);
-    }
-  };
-
   const saveRecordsMutation = useMutation(api.records.saveRecords);
   const updateRecordMutation = useMutation(api.records.updateRecord);
   const deleteRecordMutation = useMutation(api.records.deleteRecord);
@@ -299,37 +283,6 @@ const App: React.FC = () => {
     }
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 flex items-center justify-center p-4">
-        <form onSubmit={handleLogin} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-8 w-full max-w-sm shadow-2xl">
-          <div className="flex flex-col items-center gap-2 mb-8">
-            <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <h1 className="text-xl font-bold text-white">Dataxpro</h1>
-          </div>
-          <div className="flex flex-col gap-4">
-            <input
-              type="password"
-              value={passwordInput}
-              onChange={(e) => { setPasswordInput(e.target.value); setAuthError(false); }}
-              placeholder="Mot de passe"
-              autoFocus
-              className={`w-full px-4 py-3 rounded-xl bg-white/10 border text-white placeholder-white/40 outline-none transition-all text-sm ${authError ? 'border-red-400 shake' : 'border-white/20 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30'}`}
-            />
-            {authError && <p className="text-red-400 text-xs text-center -mt-2">Mot de passe incorrect</p>}
-            <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold rounded-xl transition-all text-sm shadow-lg">
-              Accéder
-            </button>
-          </div>
-        </form>
-      </div>
-    );
-  }
-
   return (
     <div className="app-layout">
       <Sidebar 
@@ -352,6 +305,7 @@ const App: React.FC = () => {
               <span className={`w-2 h-2 rounded-full ${state.syncSettings.enabled || state.syncSettings.convexEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
               {state.records.length} en session • {catalogueRecords.length} en base
             </span>
+            <UserButton afterSignOutUrl="/" />
           </div>
         </header>
 
