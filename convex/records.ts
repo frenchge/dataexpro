@@ -39,6 +39,7 @@ export const saveRecords = mutation({
         detente_amorto: String(record.detente_amorto || ""),
         ressort_amorto: String(record.ressort_amorto || ""),
         sag: String(record.sag || ""),
+        source: String(record.source || ""),
         extractedAt: new Date().toISOString(),
       };
 
@@ -91,6 +92,18 @@ export const deleteRecord = mutation({
   },
   handler: async (ctx, args) => {
     await ctx.db.delete(args.id);
+    return { success: true };
+  },
+});
+
+// Patch a record with multiple fields (used for re-extraction)
+export const patchRecord = mutation({
+  args: {
+    id: v.id("dirtbikes"),
+    fields: v.any(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, args.fields);
     return { success: true };
   },
 });

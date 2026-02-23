@@ -20,6 +20,7 @@ export default defineSchema({
     detente_amorto: v.string(),
     ressort_amorto: v.string(),
     sag: v.string(),
+    source: v.optional(v.string()),
     extractedAt: v.string(),
   }).index("by_bikeId", ["bikeId"]),
 });

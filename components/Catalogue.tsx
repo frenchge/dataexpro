@@ -243,6 +243,14 @@ const Catalogue: React.FC = () => {
                       <span className="text-[10px] text-slate-400">
                         Extrait le {record.extractedAt ? new Date(record.extractedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A'}
                       </span>
+                      {record.source && (
+                        <a href={record.source} target="_blank" rel="noopener noreferrer" className="text-[10px] text-indigo-500 hover:text-indigo-700 flex items-center gap-1">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                          </svg>
+                          Source
+                        </a>
+                      )}
                       <span className="text-[10px] text-slate-400 font-mono">{record.bikeId}</span>
                     </div>
                   </div>

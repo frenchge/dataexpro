@@ -1,19 +1,24 @@
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useMutation, useQuery } from "convex/react";
 import { api } from "./convex/_generated/api";
+import type { Id } from "./convex/_generated/dataModel";
 import ExtractorForm from './components/ExtractorForm';
 import DataGrid from './components/DataGrid';
 import Sidebar, { Page } from './components/Sidebar';
 import Catalogue from './components/Catalogue';
-import { extractContent } from './services/geminiService';
+import { extractContent, reExtractForRecord, fetchUrlContent, extractFromUrl, isUrl } from './services/geminiService';
 import { ExtractionRecord, ColumnDefinition, AppState, SyncSettings, SyncStatus } from './types';
 
 const App: React.FC = () => {
   const saveRecordsMutation = useMutation(api.records.saveRecords);
+  const updateRecordMutation = useMutation(api.records.updateRecord);
+  const deleteRecordMutation = useMutation(api.records.deleteRecord);
+  const patchRecordMutation = useMutation(api.records.patchRecord);
   const catalogueRecords = useQuery(api.records.getAllRecords) ?? [];
 
   const [currentPage, setCurrentPage] = useState<Page>('extraction');
+  const [reExtractingId, setReExtractingId] = useState<string | null>(null);
 
   const [state, setState] = useState<AppState>(() => {
     const savedSync = localStorage.getItem('suspension_sync_settings');
@@ -42,7 +47,7 @@ const App: React.FC = () => {
         enabled: false, 
         webhookUrl: '', 
         convexEnabled: true, 
-        convexUrl: 'https://proficient-reindeer-14.convex.cloud' 
+        convexUrl: 'https://adjoining-kookabura-150.convex.cloud' 
       },
       syncStatus: 'idle',
       convexSyncStatus: 'idle'
@@ -52,6 +57,35 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('suspension_sync_settings', JSON.stringify(state.syncSettings));
   }, [state.syncSettings]);
+
+  // Merge session records with Convex DB records for unified display
+  const displayRecords: ExtractionRecord[] = useMemo(() => {
+    const dbBikeIds = new Set(catalogueRecords.map((r: any) => r.bikeId));
+
+    // Session records not yet in DB
+    const newSessionRecords = state.records.filter(sr => {
+      const brand = String(sr.marque_moto || "").trim().toLowerCase();
+      const model = String(sr.modele_moto || "").trim().toLowerCase();
+      const year = String(sr.annee_moto || "").trim();
+      const bikeId = `${brand}-${model}-${year}`.replace(/\s+/g, "_");
+      return !dbBikeIds.has(bikeId);
+    });
+
+    // Map Convex records to ExtractionRecord format
+    const dbRecords: ExtractionRecord[] = catalogueRecords.map((r: any) => {
+      const record: ExtractionRecord = {
+        id: r._id as string,
+        _convexId: r._id as string,
+        source: r.source || '',
+      };
+      state.columns.forEach(col => {
+        record[col.id] = r[col.id] || '';
+      });
+      return record;
+    });
+
+    return [...newSessionRecords, ...dbRecords];
+  }, [state.records, catalogueRecords, state.columns]);
 
   const syncToGoogleSheets = async (data: ExtractionRecord[]) => {
     if (!state.syncSettings.enabled || !state.syncSettings.webhookUrl || data.length === 0) return;
@@ -100,18 +134,60 @@ const App: React.FC = () => {
     }
   };
 
-  const handleExtraction = async (content: string, isPDF: boolean, prompt: string, columns: ColumnDefinition[]) => {
+  const handleExtraction = async (content: string, isPDF: boolean, prompt: string, columns: ColumnDefinition[], sourceContent?: string) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     
     try {
-      const newRecords = await extractContent(content, isPDF, prompt, columns);
+      let extractionContent = content;
+      let storedSource = sourceContent || '';
+      let newRecords: ExtractionRecord[];
+
+      // If the user pasted a URL, use smart multi-strategy extraction
+      if (!isPDF && isUrl(content.trim())) {
+        const url = content.trim();
+        console.log('URL detected:', url);
+
+        // Strategy 1: Use Gemini with Google Search grounding (best for JS-rendered pages)
+        try {
+          console.log('Strategy 1: Gemini Google Search extraction...');
+          newRecords = await extractFromUrl(url, prompt, columns);
+          console.log(`Google Search extraction found ${newRecords.length} records`);
+
+          // Try to also fetch page HTML for stored source (enables re-extraction later)
+          try {
+            storedSource = await fetchUrlContent(url);
+          } catch {
+            storedSource = url; // If proxy fails, store URL as fallback source
+          }
+        } catch (searchErr: any) {
+          console.warn('Strategy 1 failed:', searchErr.message);
+
+          // Strategy 2: Fetch HTML via CORS proxy → send raw HTML to Gemini
+          console.log('Strategy 2: CORS proxy + HTML extraction...');
+          const fetched = await fetchUrlContent(url);
+          extractionContent = fetched;
+          storedSource = fetched;
+          console.log(`Proxy fetched ${fetched.length} chars of HTML`);
+          newRecords = await extractContent(extractionContent, false, prompt, columns);
+        }
+      } else {
+        // Normal text/PDF extraction
+        newRecords = await extractContent(extractionContent, isPDF, prompt, columns);
+      }
+
+      // Attach source content for re-extraction later
+      const recordsWithSource = newRecords.map(r => ({
+        ...r,
+        source: storedSource,
+      }));
+
       setState(prev => ({
         ...prev,
         columns,
-        records: [...prev.records, ...newRecords],
+        records: [...prev.records, ...recordsWithSource],
         isLoading: false,
       }));
-      syncToGoogleSheets(newRecords);
+      syncToGoogleSheets(recordsWithSource);
     } catch (err: any) {
       setState(prev => ({
         ...prev,
@@ -122,18 +198,28 @@ const App: React.FC = () => {
   };
 
   const handleUpdateRecord = useCallback((id: string, field: string, value: string) => {
-    setState(prev => {
-      const updatedRecords = prev.records.map(r => r.id === id ? { ...r, [field]: value } : r);
-      return { ...prev, records: updatedRecords };
-    });
-  }, []);
+    const isConvexRecord = catalogueRecords.some((r: any) => r._id === id);
+    if (isConvexRecord) {
+      updateRecordMutation({ id: id as Id<"dirtbikes">, field, value });
+    } else {
+      setState(prev => {
+        const updatedRecords = prev.records.map(r => r.id === id ? { ...r, [field]: value } : r);
+        return { ...prev, records: updatedRecords };
+      });
+    }
+  }, [catalogueRecords, updateRecordMutation]);
 
   const handleDeleteRecord = useCallback((id: string) => {
-    setState(prev => ({
-      ...prev,
-      records: prev.records.filter(r => r.id !== id)
-    }));
-  }, []);
+    const isConvexRecord = catalogueRecords.some((r: any) => r._id === id);
+    if (isConvexRecord) {
+      deleteRecordMutation({ id: id as Id<"dirtbikes"> });
+    } else {
+      setState(prev => ({
+        ...prev,
+        records: prev.records.filter(r => r.id !== id)
+      }));
+    }
+  }, [catalogueRecords, deleteRecordMutation]);
 
   const handleAddRow = useCallback(() => {
     const newRecord: ExtractionRecord = { id: `manual-${Date.now()}` };
@@ -150,12 +236,58 @@ const App: React.FC = () => {
     setState(prev => ({ ...prev, syncSettings: newSettings }));
   };
 
+  const handleReExtract = async (recordId: string) => {
+    const record = displayRecords.find(r => r.id === recordId);
+    if (!record?.source) return;
+
+    setReExtractingId(recordId);
+    setState(prev => ({ ...prev, error: null }));
+
+    try {
+      const filledFields = await reExtractForRecord(
+        String(record.source),
+        state.columns,
+        record as unknown as Record<string, string>
+      );
+
+      if (Object.keys(filledFields).length === 0) {
+        setReExtractingId(null);
+        return;
+      }
+
+      // If it's a Convex record, update in DB
+      const isConvexRecord = catalogueRecords.some((r: any) => r._id === recordId);
+      if (isConvexRecord) {
+        await patchRecordMutation({
+          id: recordId as Id<"dirtbikes">,
+          fields: filledFields,
+        });
+      } else {
+        // Update session record
+        setState(prev => ({
+          ...prev,
+          records: prev.records.map(r =>
+            r.id === recordId ? { ...r, ...filledFields } : r
+          ),
+        }));
+      }
+
+      setReExtractingId(null);
+    } catch (err: any) {
+      setReExtractingId(null);
+      setState(prev => ({
+        ...prev,
+        error: `Re-extraction échouée: ${err.message}`,
+      }));
+    }
+  };
+
   return (
     <div className="app-layout">
       <Sidebar 
         currentPage={currentPage}
         onNavigate={setCurrentPage}
-        recordCount={state.records.length}
+        recordCount={displayRecords.length}
         catalogueCount={catalogueRecords.length}
       />
 
@@ -220,7 +352,7 @@ const App: React.FC = () => {
               <div className="extraction-main">
                 <DataGrid 
                   columns={state.columns}
-                  records={state.records}
+                  records={displayRecords}
                   onUpdateRecord={handleUpdateRecord}
                   onDeleteRecord={handleDeleteRecord}
                   onAddRow={handleAddRow}
@@ -229,6 +361,8 @@ const App: React.FC = () => {
                   syncStatus={state.syncStatus}
                   convexSyncStatus={state.convexSyncStatus}
                   onSyncConvex={syncConvex}
+                  onReExtract={handleReExtract}
+                  reExtractingId={reExtractingId}
                 />
               </div>
             </div>

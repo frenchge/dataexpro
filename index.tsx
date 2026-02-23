@@ -5,7 +5,7 @@ import { ConvexProvider, ConvexReactClient } from "convex/react";
 import App from './App';
 
 // Utilisation de l'URL fournie par l'utilisateur
-const convexUrl = "https://proficient-reindeer-14.convex.cloud";
+const convexUrl = "https://adjoining-kookabura-150.convex.cloud";
 const convex = new ConvexReactClient(convexUrl);
 
 const rootElement = document.getElementById('root');

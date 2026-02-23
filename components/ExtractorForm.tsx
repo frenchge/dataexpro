@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { ColumnDefinition, ExtractionMode } from '../types';
 
 interface ExtractorFormProps {
-  onExtract: (content: string, isPDF: boolean, prompt: string, columns: ColumnDefinition[]) => void;
+  onExtract: (content: string, isPDF: boolean, prompt: string, columns: ColumnDefinition[], sourceUrl?: string) => void;
   isLoading: boolean;
   initialColumns: ColumnDefinition[];
 }
@@ -45,7 +45,7 @@ const ExtractorForm: React.FC<ExtractorFormProps> = ({ onExtract, isLoading, ini
     if (mode === 'pdf' && fileBase64) {
       onExtract(fileBase64, true, userInstructions, columns);
     } else if (textContent) {
-      onExtract(textContent, false, userInstructions, columns);
+      onExtract(textContent, false, userInstructions, columns, textContent);
     }
   };
 
@@ -94,13 +94,14 @@ const ExtractorForm: React.FC<ExtractorFormProps> = ({ onExtract, isLoading, ini
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-slate-700">Contenu (Texte ou HTML de site)</label>
+            <label className="text-sm font-semibold text-slate-700">Contenu (Texte, HTML ou URL de site)</label>
             <textarea 
               className="w-full h-40 p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all resize-none text-sm"
-              placeholder="Collez le texte d'un article, d'un test ou le code source d'une page..."
+              placeholder="Collez le texte d'un article, d'un test, le code source d'une page ou une URL..."
               value={textContent}
               onChange={(e) => setTextContent(e.target.value)}
             />
+            <p className="text-xs text-slate-400">Le contenu collé sera stocké comme source pour pouvoir relancer l'extraction plus tard.</p>
           </div>
         )}
 
@@ -143,7 +144,7 @@ const ExtractorForm: React.FC<ExtractorFormProps> = ({ onExtract, isLoading, ini
 
         <button 
           type="submit"
-          disabled={isLoading || (!textContent && !fileBase64)}
+          disabled={isLoading || (mode === 'text' && !textContent) || (mode === 'pdf' && !fileBase64)}
           className={`w-full py-4 rounded-xl font-bold text-white transition-all shadow-lg flex items-center justify-center gap-2 ${isLoading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 active:scale-95'}`}
         >
           {isLoading ? (

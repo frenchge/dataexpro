@@ -14,6 +14,8 @@ interface DataGridProps {
   syncStatus: SyncStatus;
   convexSyncStatus: SyncStatus;
   onSyncConvex: () => void;
+  onReExtract?: (id: string) => void;
+  reExtractingId?: string | null;
 }
 
 const DataGrid: React.FC<DataGridProps> = ({ 
@@ -26,7 +28,9 @@ const DataGrid: React.FC<DataGridProps> = ({
   onUpdateSyncSettings,
   syncStatus,
   convexSyncStatus,
-  onSyncConvex
+  onSyncConvex,
+  onReExtract,
+  reExtractingId
 }) => {
   const [editingCell, setEditingCell] = useState<{ id: string, field: string } | null>(null);
 
@@ -132,7 +136,10 @@ const DataGrid: React.FC<DataGridProps> = ({
                   {col.header}
                 </th>
               ))}
-              <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider w-16 text-center">
+              <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider border-r border-slate-200 w-20">
+                Source
+              </th>
+              <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider w-24 text-center">
                 Actions
               </th>
             </tr>
@@ -140,7 +147,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           <tbody className="divide-y divide-slate-200">
             {records.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + 1} className="px-6 py-12 text-center text-slate-400 italic">
+                <td colSpan={columns.length + 2} className="px-6 py-12 text-center text-slate-400 italic">
                   Aucune donnée disponible. Commencez par extraire du contenu.
                 </td>
               </tr>
@@ -167,16 +174,56 @@ const DataGrid: React.FC<DataGridProps> = ({
                       )}
                     </td>
                   ))}
+                  <td className="px-6 py-3 text-sm border-r border-slate-100">
+                    {record.source ? (
+                      <a
+                        href={String(record.source)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-indigo-500 hover:text-indigo-700 truncate block max-w-[100px]"
+                        title={String(record.source)}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                        Lien
+                      </a>
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    )}
+                  </td>
                   <td className="px-6 py-3 text-center">
-                    <button 
-                      onClick={() => onDeleteRecord(record.id)}
-                      className="text-slate-400 hover:text-red-500 transition-colors p-1"
-                      title="Supprimer la ligne"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center justify-center gap-1">
+                      {onReExtract && record.source && (
+                        <button
+                          onClick={() => onReExtract(record.id)}
+                          disabled={reExtractingId === record.id}
+                          className={`p-1 rounded transition-colors ${
+                            reExtractingId === record.id
+                              ? 'text-amber-400 cursor-not-allowed'
+                              : 'text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50'
+                          }`}
+                          title="Relancer l'extraction depuis la source"
+                        >
+                          {reExtractingId === record.id ? (
+                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                          )}
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => onDeleteRecord(record.id)}
+                        className="text-slate-400 hover:text-red-500 transition-colors p-1"
+                        title="Supprimer la ligne"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

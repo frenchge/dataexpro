@@ -21,8 +21,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, recordCount,
           </svg>
         </div>
         <div className="sidebar-logo-text">
-          <span className="sidebar-logo-title">Dataexpro</span>
-          <span className="sidebar-logo-subtitle">Data Extraction</span>
+          <span className="sidebar-logo-title">Dataxpro</span>
         </div>
       </div>
 
