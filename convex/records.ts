@@ -75,13 +75,18 @@ export const saveRecords = mutation({
   },
 });
 
-// Query all dirtbikes (lightweight — no source field read)
-export const getAllRecords = query({
-  args: {},
-  handler: async (ctx) => {
-    const records = await ctx.db.query("dirtbikes").order("desc").collect();
-    // Return without the deprecated source field
-    return records.map(({ source, ...rest }) => rest);
+// Query dirtbikes with pagination (20 per page, no source field)
+export const getPaginatedRecords = query({
+  args: { paginationOpts: v.any() },
+  handler: async (ctx, args) => {
+    const result = await ctx.db
+      .query("dirtbikes")
+      .order("desc")
+      .paginate(args.paginationOpts);
+    return {
+      ...result,
+      page: result.page.map(({ source, ...rest }) => rest),
+    };
   },
 });
 

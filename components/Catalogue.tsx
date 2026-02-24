@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { useQuery, useMutation } from "convex/react";
+import { usePaginatedQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 
@@ -23,7 +23,11 @@ const FIELDS = [
 ] as const;
 
 const Catalogue: React.FC = () => {
-  const records = useQuery(api.records.getAllRecords) ?? [];
+  const { results: records, status, loadMore } = usePaginatedQuery(
+    api.records.getPaginatedRecords,
+    {},
+    { initialNumItems: 20 }
+  );
   const updateRecord = useMutation(api.records.updateRecord);
   const deleteRecord = useMutation(api.records.deleteRecord);
 
@@ -258,6 +262,29 @@ const Catalogue: React.FC = () => {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Voir plus button */}
+      {status === 'CanLoadMore' && (
+        <div className="flex justify-center mt-6">
+          <button
+            onClick={() => loadMore(20)}
+            className="px-6 py-2.5 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors text-sm font-semibold flex items-center gap-2 shadow-sm"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+            Voir plus
+          </button>
+        </div>
+      )}
+      {status === 'LoadingMore' && (
+        <div className="flex justify-center mt-6">
+          <div className="px-6 py-2.5 text-indigo-400 text-sm font-semibold flex items-center gap-2">
+            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            Chargement...
+          </div>
         </div>
       )}
     </div>

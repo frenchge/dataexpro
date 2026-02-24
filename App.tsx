@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { useMutation, useQuery, useConvex } from "convex/react";
+import { useMutation, usePaginatedQuery, useConvex } from "convex/react";
 import { UserButton } from '@clerk/clerk-react';
 import { api } from "./convex/_generated/api";
 import type { Id } from "./convex/_generated/dataModel";
@@ -17,7 +17,11 @@ const App: React.FC = () => {
   const deleteRecordMutation = useMutation(api.records.deleteRecord);
   const patchRecordMutation = useMutation(api.records.patchRecord);
   const convexClient = useConvex();
-  const catalogueRecords = useQuery(api.records.getAllRecords) ?? [];
+  const { results: catalogueRecords, status: paginationStatus, loadMore } = usePaginatedQuery(
+    api.records.getPaginatedRecords,
+    {},
+    { initialNumItems: 20 }
+  );
 
   const [currentPage, setCurrentPage] = useState<Page>('extraction');
   const [reExtractingId, setReExtractingId] = useState<string | null>(null);
@@ -374,6 +378,9 @@ const App: React.FC = () => {
                   onSyncConvex={syncConvex}
                   onReExtract={handleReExtract}
                   reExtractingId={reExtractingId}
+                  onLoadMore={() => loadMore(20)}
+                  canLoadMore={paginationStatus === 'CanLoadMore'}
+                  isLoadingMore={paginationStatus === 'LoadingMore'}
                 />
               </div>
             </div>
