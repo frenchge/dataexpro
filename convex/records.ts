@@ -149,9 +149,21 @@ export const getRecordSource = query({
         .withIndex("by_bikeId", (q) => q.eq("bikeId", record.bikeId))
         .first();
     }
-    if (sourceDoc) return { source: sourceDoc.source, sourceType: sourceDoc.sourceType || "" };
+    if (sourceDoc) {
+      const sourceType = sourceDoc.sourceType || "";
+      // For HTML sources, extract the original URL so frontend can open it directly
+      let sourceUrl = "";
+      if (sourceType === "html") {
+        const canonicalMatch = sourceDoc.source.match(/<link[^>]+rel="canonical"[^>]+href="([^"]+)"/i)
+          || sourceDoc.source.match(/href="canonical"[^>]+href="([^"]+)"/i);
+        const ogUrlMatch = sourceDoc.source.match(/<meta[^>]+property="og:url"[^>]+content="([^"]+)"/i)
+          || sourceDoc.source.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:url"/i);
+        sourceUrl = canonicalMatch?.[1] || ogUrlMatch?.[1] || "";
+      }
+      return { source: sourceDoc.source, sourceType, sourceUrl };
+    }
     // Fallback to legacy source field on dirtbikes table
-    return { source: record.source ?? "", sourceType: "" };
+    return { source: record.source ?? "", sourceType: "", sourceUrl: "" };
   },
 });
 

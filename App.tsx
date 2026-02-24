@@ -306,9 +306,17 @@ const App: React.FC = () => {
     const record = displayRecords.find(r => r.id === recordId);
     if (!record) return;
 
+    const sourceType = String(record.sourceType || '');
+
+    // PDF binary data stored as string is corrupted (UTF-8/JSON encoding loss)
+    // It's kept for re-extraction only, not viewable
+    if (sourceType === 'pdf') {
+      return;
+    }
+
     setViewingSourceId(recordId);
     try {
-      // Fetch full source content from Convex
+      // Fetch source from Convex (includes sourceUrl for HTML)
       const result = await convexClient.query(api.records.getRecordSource, {
         id: recordId as Id<"dirtbikes">
       });
@@ -318,31 +326,29 @@ const App: React.FC = () => {
       }
 
       const source = result.source;
-      const sourceType = result.sourceType || String(record.sourceType || '');
+      const type = result.sourceType || sourceType;
+      const sourceUrl = (result as any).sourceUrl || '';
 
-      if (sourceType === 'url') {
+      if (type === 'url') {
         // Direct URL — open in new tab
-        window.open(source, '_blank');
-      } else if (sourceType === 'html') {
-        // HTML content — render in new tab via blob
-        const blob = new Blob([source], { type: 'text/html;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
-      } else if (sourceType === 'pdf') {
-        // PDF content — try to open as PDF blob
-        // Convert string to byte array for proper binary handling
-        const bytes = new Uint8Array(source.length);
-        for (let i = 0; i < source.length; i++) {
-          bytes[i] = source.charCodeAt(i) & 0xff;
+        window.open(source.trim(), '_blank');
+      } else if (type === 'html') {
+        // For HTML sources, open the original website URL if available
+        if (sourceUrl) {
+          window.open(sourceUrl, '_blank');
+        } else {
+          // Fallback: try to find a URL in the HTML content
+          const urlMatch = source.match(/href="(https?:\/\/[^"]+)"/i);
+          if (urlMatch) {
+            window.open(urlMatch[1], '_blank');
+          }
         }
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
       } else {
-        // Fallback: try as HTML
-        const blob = new Blob([source], { type: 'text/html;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
+        // Unknown type — try URL detection
+        const trimmed = source.trim();
+        if (/^https?:\/\//i.test(trimmed)) {
+          window.open(trimmed, '_blank');
+        }
       }
     } catch (err) {
       console.error('Failed to view source:', err);
