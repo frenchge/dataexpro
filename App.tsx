@@ -26,6 +26,7 @@ const App: React.FC = () => {
 
   const [currentPage, setCurrentPage] = useState<Page>('extraction');
   const [reExtractingId, setReExtractingId] = useState<string | null>(null);
+  const [viewingSourceId, setViewingSourceId] = useState<string | null>(null);
 
   const [state, setState] = useState<AppState>(() => {
     const savedSync = localStorage.getItem('suspension_sync_settings');
@@ -297,6 +298,54 @@ const App: React.FC = () => {
     }
   };
 
+  const handleViewSource = async (recordId: string) => {
+    const record = displayRecords.find(r => r.id === recordId);
+    if (!record) return;
+
+    setViewingSourceId(recordId);
+    try {
+      // Fetch full source content from Convex
+      const result = await convexClient.query(api.records.getRecordSource, {
+        id: recordId as Id<"dirtbikes">
+      });
+      if (!result?.source) {
+        setViewingSourceId(null);
+        return;
+      }
+
+      const source = result.source;
+      const sourceType = result.sourceType || String(record.sourceType || '');
+
+      if (sourceType === 'url') {
+        // Direct URL — open in new tab
+        window.open(source, '_blank');
+      } else if (sourceType === 'html') {
+        // HTML content — render in new tab via blob
+        const blob = new Blob([source], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+      } else if (sourceType === 'pdf') {
+        // PDF content — try to open as PDF blob
+        // Convert string to byte array for proper binary handling
+        const bytes = new Uint8Array(source.length);
+        for (let i = 0; i < source.length; i++) {
+          bytes[i] = source.charCodeAt(i) & 0xff;
+        }
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+      } else {
+        // Fallback: try as HTML
+        const blob = new Blob([source], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+      }
+    } catch (err) {
+      console.error('Failed to view source:', err);
+    }
+    setViewingSourceId(null);
+  };
+
   return (
     <div className="app-layout">
       <Sidebar 
@@ -382,6 +431,8 @@ const App: React.FC = () => {
                   onLoadMore={() => loadMore(20)}
                   canLoadMore={paginationStatus === 'CanLoadMore'}
                   isLoadingMore={paginationStatus === 'LoadingMore'}
+                  onViewSource={handleViewSource}
+                  viewingSourceId={viewingSourceId}
                 />
               </div>
             </div>

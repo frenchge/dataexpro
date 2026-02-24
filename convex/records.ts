@@ -11,6 +11,14 @@ function generateBikeId(record: any): string {
   return `${brand}-${model}-${year}`.replace(/\s+/g, "_");
 }
 
+// Detect source type from content
+function detectSourceType(source: string): string {
+  const trimmed = source.trim();
+  if (trimmed.startsWith("%PDF")) return "pdf";
+  if (/^https?:\/\//i.test(trimmed)) return "url";
+  return "html";
+}
+
 export const saveRecords = mutation({
   args: {
     records: v.array(v.any()),
@@ -49,24 +57,27 @@ export const saveRecords = mutation({
         .withIndex("by_bikeId", (q) => q.eq("bikeId", bikeId))
         .first();
 
+      let dirtbikeId;
       if (existing) {
         await ctx.db.patch(existing._id, data);
+        dirtbikeId = existing._id;
         updated++;
       } else {
-        await ctx.db.insert("dirtbikes", data);
+        dirtbikeId = await ctx.db.insert("dirtbikes", data);
         inserted++;
       }
 
-      // Store source in separate table (upsert)
+      // Store source in separate table linked by dirtbike _id
       if (sourceContent) {
+        const sourceType = detectSourceType(sourceContent);
         const existingSource = await ctx.db
           .query("dirtbike_sources")
-          .withIndex("by_bikeId", (q) => q.eq("bikeId", bikeId))
+          .withIndex("by_dirtbikeId", (q) => q.eq("dirtbikeId", dirtbikeId))
           .first();
         if (existingSource) {
-          await ctx.db.patch(existingSource._id, { source: sourceContent });
+          await ctx.db.patch(existingSource._id, { source: sourceContent, sourceType, dirtbikeId });
         } else {
-          await ctx.db.insert("dirtbike_sources", { bikeId, source: sourceContent });
+          await ctx.db.insert("dirtbike_sources", { bikeId, dirtbikeId, source: sourceContent, sourceType });
         }
       }
     }
@@ -75,7 +86,7 @@ export const saveRecords = mutation({
   },
 });
 
-// Query dirtbikes with pagination (20 per page, no source field)
+// Query dirtbikes with pagination (20 per page, no source content but with source metadata)
 export const getPaginatedRecords = query({
   args: { paginationOpts: v.any() },
   handler: async (ctx, args) => {
@@ -83,10 +94,28 @@ export const getPaginatedRecords = query({
       .query("dirtbikes")
       .order("desc")
       .paginate(args.paginationOpts);
-    return {
-      ...result,
-      page: result.page.map(({ source, ...rest }) => rest),
-    };
+
+    const page = await Promise.all(
+      result.page.map(async ({ source, ...rest }) => {
+        // Check for source via dirtbikeId index first, fallback to bikeId
+        let sourceDoc = await ctx.db
+          .query("dirtbike_sources")
+          .withIndex("by_dirtbikeId", (q) => q.eq("dirtbikeId", rest._id))
+          .first();
+        if (!sourceDoc) {
+          sourceDoc = await ctx.db
+            .query("dirtbike_sources")
+            .withIndex("by_bikeId", (q) => q.eq("bikeId", rest.bikeId))
+            .first();
+        }
+        return {
+          ...rest,
+          sourceType: sourceDoc?.sourceType || "",
+        };
+      })
+    );
+
+    return { ...result, page };
   },
 });
 
@@ -102,20 +131,27 @@ export const getRecordCount = query({
   },
 });
 
-// Get source content for a single record (for re-extraction)
+// Get source content for a single record (for re-extraction or viewing)
 export const getRecordSource = query({
   args: { id: v.id("dirtbikes") },
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.id);
     if (!record) return null;
-    // Check new dirtbike_sources table first
-    const sourceDoc = await ctx.db
+    // Check by dirtbikeId first (new linkage)
+    let sourceDoc = await ctx.db
       .query("dirtbike_sources")
-      .withIndex("by_bikeId", (q) => q.eq("bikeId", record.bikeId))
+      .withIndex("by_dirtbikeId", (q) => q.eq("dirtbikeId", args.id))
       .first();
-    if (sourceDoc) return { source: sourceDoc.source };
+    // Fallback to bikeId (legacy linkage, pre-migration)
+    if (!sourceDoc) {
+      sourceDoc = await ctx.db
+        .query("dirtbike_sources")
+        .withIndex("by_bikeId", (q) => q.eq("bikeId", record.bikeId))
+        .first();
+    }
+    if (sourceDoc) return { source: sourceDoc.source, sourceType: sourceDoc.sourceType || "" };
     // Fallback to legacy source field on dirtbikes table
-    return { source: record.source ?? "" };
+    return { source: record.source ?? "", sourceType: "" };
   },
 });
 
@@ -132,7 +168,47 @@ export const updateRecord = mutation({
   },
 });
 
-// One-time migration: move source data using pagination
+// Migration: relink existing sources with dirtbikeId and sourceType
+export const relinkSources = mutation({
+  args: {
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const result = await ctx.db.query("dirtbike_sources").paginate({
+      cursor: args.cursor ?? null,
+      numItems: 5,
+    });
+    let relinked = 0;
+    for (const sourceDoc of result.page) {
+      // Skip if already has dirtbikeId
+      if (sourceDoc.dirtbikeId) continue;
+
+      // Find the dirtbike by bikeId
+      if (sourceDoc.bikeId) {
+        const dirtbike = await ctx.db
+          .query("dirtbikes")
+          .withIndex("by_bikeId", (q) => q.eq("bikeId", sourceDoc.bikeId!))
+          .first();
+        if (dirtbike) {
+          const sourceType = sourceDoc.sourceType || detectSourceType(sourceDoc.source);
+          await ctx.db.patch(sourceDoc._id, {
+            dirtbikeId: dirtbike._id,
+            sourceType,
+          });
+          relinked++;
+        }
+      }
+    }
+    return {
+      success: true,
+      relinked,
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
+  },
+});
+
+// Legacy migration (kept for reference)
 export const migrateSourceData = mutation({
   args: {
     cursor: v.optional(v.string()),
@@ -176,11 +252,17 @@ export const deleteRecord = mutation({
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.id);
     if (record) {
-      // Delete associated source
-      const sourceDoc = await ctx.db
+      // Delete associated source by dirtbikeId first, then bikeId fallback
+      let sourceDoc = await ctx.db
         .query("dirtbike_sources")
-        .withIndex("by_bikeId", (q) => q.eq("bikeId", record.bikeId))
+        .withIndex("by_dirtbikeId", (q) => q.eq("dirtbikeId", args.id))
         .first();
+      if (!sourceDoc) {
+        sourceDoc = await ctx.db
+          .query("dirtbike_sources")
+          .withIndex("by_bikeId", (q) => q.eq("bikeId", record.bikeId))
+          .first();
+      }
       if (sourceDoc) await ctx.db.delete(sourceDoc._id);
     }
     await ctx.db.delete(args.id);

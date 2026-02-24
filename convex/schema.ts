@@ -25,9 +25,12 @@ export default defineSchema({
     source: v.optional(v.string()),
   }).index("by_bikeId", ["bikeId"]),
 
-  // Separate table for heavy source content (HTML/PDF)
+  // Separate table for heavy source content (HTML/PDF/URL)
   dirtbike_sources: defineTable({
-    bikeId: v.string(),
+    bikeId: v.optional(v.string()), // deprecated, kept for migration fallback
+    dirtbikeId: v.optional(v.id("dirtbikes")), // proper foreign key
     source: v.string(),
-  }).index("by_bikeId", ["bikeId"]),
+    sourceType: v.optional(v.string()), // "pdf" | "html" | "url"
+  }).index("by_bikeId", ["bikeId"])
+    .index("by_dirtbikeId", ["dirtbikeId"]),
 });
