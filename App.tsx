@@ -88,6 +88,10 @@ const App: React.FC = () => {
       state.columns.forEach(col => {
         record[col.id] = r[col.id] || '';
       });
+      // Carry over sourceType for smart source display
+      if (r.sourceType) {
+        record.sourceType = r.sourceType;
+      }
       return record;
     });
 
