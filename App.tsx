@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery, useConvex } from "convex/react";
 import { UserButton } from '@clerk/clerk-react';
 import { api } from "./convex/_generated/api";
 import type { Id } from "./convex/_generated/dataModel";
@@ -16,6 +16,7 @@ const App: React.FC = () => {
   const updateRecordMutation = useMutation(api.records.updateRecord);
   const deleteRecordMutation = useMutation(api.records.deleteRecord);
   const patchRecordMutation = useMutation(api.records.patchRecord);
+  const convexClient = useConvex();
   const catalogueRecords = useQuery(api.records.getAllRecords) ?? [];
 
   const [currentPage, setCurrentPage] = useState<Page>('extraction');
@@ -77,7 +78,6 @@ const App: React.FC = () => {
       const record: ExtractionRecord = {
         id: r._id as string,
         _convexId: r._id as string,
-        source: r.source || '',
       };
       state.columns.forEach(col => {
         record[col.id] = r[col.id] || '';
@@ -239,14 +239,23 @@ const App: React.FC = () => {
 
   const handleReExtract = async (recordId: string) => {
     const record = displayRecords.find(r => r.id === recordId);
-    if (!record?.source) return;
+    if (!record) return;
 
     setReExtractingId(recordId);
     setState(prev => ({ ...prev, error: null }));
 
     try {
+      // Fetch source on demand: from session record or from Convex DB
+      let source = record.source || '';
+      const isConvex = catalogueRecords.some((r: any) => r._id === recordId);
+      if (isConvex && !source) {
+        const result = await convexClient.query(api.records.getRecordSource, { id: recordId as Id<"dirtbikes"> });
+        source = result?.source || '';
+      }
+      if (!source) return;
+
       const filledFields = await reExtractForRecord(
-        String(record.source),
+        source,
         state.columns,
         record as unknown as Record<string, string>
       );

@@ -64,11 +64,22 @@ export const saveRecords = mutation({
   },
 });
 
-// Query all dirtbikes from the database
+// Query all dirtbikes from the database (without heavy source field)
 export const getAllRecords = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("dirtbikes").order("desc").collect();
+    const records = await ctx.db.query("dirtbikes").order("desc").collect();
+    // Strip the large "source" field to stay under the 16MB read limit
+    return records.map(({ source, ...rest }) => rest);
+  },
+});
+
+// Get a single record's source field (for re-extraction)
+export const getRecordSource = query({
+  args: { id: v.id("dirtbikes") },
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.id);
+    return record ? { source: record.source ?? "" } : null;
   },
 });
 
