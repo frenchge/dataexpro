@@ -21,6 +21,7 @@ export const saveRecords = mutation({
 
     for (const record of args.records) {
       const bikeId = generateBikeId(record);
+      const sourceContent = String(record.source || "");
 
       const data = {
         bikeId,
@@ -39,7 +40,6 @@ export const saveRecords = mutation({
         detente_amorto: String(record.detente_amorto || ""),
         ressort_amorto: String(record.ressort_amorto || ""),
         sag: String(record.sag || ""),
-        source: String(record.source || ""),
         extractedAt: new Date().toISOString(),
       };
 
@@ -50,13 +50,24 @@ export const saveRecords = mutation({
         .first();
 
       if (existing) {
-        // Update existing record with latest data
         await ctx.db.patch(existing._id, data);
         updated++;
       } else {
-        // Insert new record
         await ctx.db.insert("dirtbikes", data);
         inserted++;
+      }
+
+      // Store source in separate table (upsert)
+      if (sourceContent) {
+        const existingSource = await ctx.db
+          .query("dirtbike_sources")
+          .withIndex("by_bikeId", (q) => q.eq("bikeId", bikeId))
+          .first();
+        if (existingSource) {
+          await ctx.db.patch(existingSource._id, { source: sourceContent });
+        } else {
+          await ctx.db.insert("dirtbike_sources", { bikeId, source: sourceContent });
+        }
       }
     }
 
@@ -64,22 +75,30 @@ export const saveRecords = mutation({
   },
 });
 
-// Query all dirtbikes from the database (without heavy source field)
+// Query all dirtbikes (lightweight — no source field read)
 export const getAllRecords = query({
   args: {},
   handler: async (ctx) => {
     const records = await ctx.db.query("dirtbikes").order("desc").collect();
-    // Strip the large "source" field to stay under the 16MB read limit
+    // Return without the deprecated source field
     return records.map(({ source, ...rest }) => rest);
   },
 });
 
-// Get a single record's source field (for re-extraction)
+// Get source content for a single record (for re-extraction)
 export const getRecordSource = query({
   args: { id: v.id("dirtbikes") },
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.id);
-    return record ? { source: record.source ?? "" } : null;
+    if (!record) return null;
+    // Check new dirtbike_sources table first
+    const sourceDoc = await ctx.db
+      .query("dirtbike_sources")
+      .withIndex("by_bikeId", (q) => q.eq("bikeId", record.bikeId))
+      .first();
+    if (sourceDoc) return { source: sourceDoc.source };
+    // Fallback to legacy source field on dirtbikes table
+    return { source: record.source ?? "" };
   },
 });
 
@@ -96,12 +115,57 @@ export const updateRecord = mutation({
   },
 });
 
-// Delete a record
+// One-time migration: move source data using pagination
+export const migrateSourceData = mutation({
+  args: {
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const result = await ctx.db.query("dirtbikes").paginate({
+      cursor: args.cursor ?? null,
+      numItems: 5,
+    });
+    let migrated = 0;
+    for (const record of result.page) {
+      if (record.source && record.source.length > 0) {
+        const existing = await ctx.db
+          .query("dirtbike_sources")
+          .withIndex("by_bikeId", (q) => q.eq("bikeId", record.bikeId))
+          .first();
+        if (!existing) {
+          await ctx.db.insert("dirtbike_sources", {
+            bikeId: record.bikeId,
+            source: record.source,
+          });
+        }
+        await ctx.db.patch(record._id, { source: "" });
+        migrated++;
+      }
+    }
+    return {
+      success: true,
+      migrated,
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
+  },
+});
+
+// Delete a record (and its source)
 export const deleteRecord = mutation({
   args: {
     id: v.id("dirtbikes"),
   },
   handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.id);
+    if (record) {
+      // Delete associated source
+      const sourceDoc = await ctx.db
+        .query("dirtbike_sources")
+        .withIndex("by_bikeId", (q) => q.eq("bikeId", record.bikeId))
+        .first();
+      if (sourceDoc) await ctx.db.delete(sourceDoc._id);
+    }
     await ctx.db.delete(args.id);
     return { success: true };
   },

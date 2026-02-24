@@ -20,7 +20,14 @@ export default defineSchema({
     detente_amorto: v.string(),
     ressort_amorto: v.string(),
     sag: v.string(),
-    source: v.optional(v.string()),
     extractedAt: v.string(),
+    // DEPRECATED: source moved to dirtbike_sources table
+    source: v.optional(v.string()),
+  }).index("by_bikeId", ["bikeId"]),
+
+  // Separate table for heavy source content (HTML/PDF)
+  dirtbike_sources: defineTable({
+    bikeId: v.string(),
+    source: v.string(),
   }).index("by_bikeId", ["bikeId"]),
 });
