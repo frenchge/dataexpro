@@ -267,7 +267,11 @@ export const reExtractForRecord = async (
 
   const prompt = `Re-extract data for the dirtbike: ${bikeContext}. Focus especially on filling these fields that are currently empty: ${emptyFields.map(f => f.header).join(', ')}. Extract ALL available information from the content.`;
 
-  const records = await extractContent(sourceContent, false, prompt, columns);
+  // Detect base64-encoded PDFs and extract as PDF binary
+  const isBase64Pdf = sourceContent.startsWith('data:application/pdf;base64,');
+  const content = isBase64Pdf ? sourceContent.slice('data:application/pdf;base64,'.length) : sourceContent;
+
+  const records = await extractContent(content, isBase64Pdf, prompt, columns);
 
   if (records.length === 0) return {};
 

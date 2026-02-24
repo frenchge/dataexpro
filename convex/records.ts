@@ -14,6 +14,7 @@ function generateBikeId(record: any): string {
 // Detect source type from content
 function detectSourceType(source: string): string {
   const trimmed = source.trim();
+  if (trimmed.startsWith("data:application/pdf;base64,")) return "pdf";
   if (trimmed.startsWith("%PDF")) return "pdf";
   if (/^https?:\/\//i.test(trimmed)) return "url";
   return "html";

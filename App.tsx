@@ -186,6 +186,11 @@ const App: React.FC = () => {
         newRecords = await extractContent(extractionContent, isPDF, prompt, columns);
       }
 
+      // For PDF uploads, store as base64 data URI (preserves binary integrity)
+      if (isPDF && !storedSource) {
+        storedSource = `data:application/pdf;base64,${content}`;
+      }
+
       // Attach source content for re-extraction later
       const recordsWithSource = newRecords.map(r => ({
         ...r,
@@ -308,12 +313,6 @@ const App: React.FC = () => {
 
     const sourceType = String(record.sourceType || '');
 
-    // PDF binary data stored as string is corrupted (UTF-8/JSON encoding loss)
-    // It's kept for re-extraction only, not viewable
-    if (sourceType === 'pdf') {
-      return;
-    }
-
     setViewingSourceId(recordId);
     try {
       // Fetch source from Convex (includes sourceUrl for HTML)
@@ -328,6 +327,24 @@ const App: React.FC = () => {
       const source = result.source;
       const type = result.sourceType || sourceType;
       const sourceUrl = (result as any).sourceUrl || '';
+
+      // PDF handling: base64-encoded PDFs can be viewed, legacy raw-string PDFs cannot
+      if (type === 'pdf') {
+        if (source.startsWith('data:application/pdf;base64,')) {
+          const base64 = source.slice('data:application/pdf;base64,'.length);
+          const byteChars = atob(base64);
+          const byteArray = new Uint8Array(byteChars.length);
+          for (let i = 0; i < byteChars.length; i++) {
+            byteArray[i] = byteChars.charCodeAt(i);
+          }
+          const blob = new Blob([byteArray], { type: 'application/pdf' });
+          const blobUrl = URL.createObjectURL(blob);
+          window.open(blobUrl, '_blank');
+        }
+        // Legacy raw-string PDFs are not viewable (corrupted by UTF-8 encoding)
+        setViewingSourceId(null);
+        return;
+      }
 
       if (type === 'url') {
         // Direct URL — open in new tab
