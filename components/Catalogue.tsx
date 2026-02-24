@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { usePaginatedQuery, useMutation } from "convex/react";
+import { usePaginatedQuery, useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 
@@ -28,6 +28,7 @@ const Catalogue: React.FC = () => {
     {},
     { initialNumItems: 20 }
   );
+  const totalCount = useQuery(api.records.getRecordCount) ?? 0;
   const updateRecord = useMutation(api.records.updateRecord);
   const deleteRecord = useMutation(api.records.deleteRecord);
 
@@ -90,7 +91,7 @@ const Catalogue: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Catalogue</h1>
           <p className="text-sm text-slate-500 mt-1">
-            {records.length} dirtbike{records.length !== 1 ? 's' : ''} dans la base Convex
+            {totalCount} dirtbike{totalCount !== 1 ? 's' : ''} dans la base Convex
           </p>
         </div>
         {/* Search */}

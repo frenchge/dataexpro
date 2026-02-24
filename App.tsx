@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { useMutation, usePaginatedQuery, useConvex } from "convex/react";
+import { useMutation, useQuery, usePaginatedQuery, useConvex } from "convex/react";
 import { UserButton } from '@clerk/clerk-react';
 import { api } from "./convex/_generated/api";
 import type { Id } from "./convex/_generated/dataModel";
@@ -22,6 +22,7 @@ const App: React.FC = () => {
     {},
     { initialNumItems: 20 }
   );
+  const totalDbCount = useQuery(api.records.getRecordCount) ?? 0;
 
   const [currentPage, setCurrentPage] = useState<Page>('extraction');
   const [reExtractingId, setReExtractingId] = useState<string | null>(null);
@@ -302,7 +303,7 @@ const App: React.FC = () => {
         currentPage={currentPage}
         onNavigate={setCurrentPage}
         recordCount={displayRecords.length}
-        catalogueCount={catalogueRecords.length}
+        catalogueCount={totalDbCount}
       />
 
       <div className="app-main">
@@ -316,7 +317,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4 text-sm text-slate-500">
             <span className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${state.syncSettings.enabled || state.syncSettings.convexEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
-              {state.records.length} en session • {catalogueRecords.length} en base
+              {state.records.length} en session • {totalDbCount} en base
             </span>
             <UserButton afterSignOutUrl="/" />
           </div>

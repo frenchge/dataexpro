@@ -90,6 +90,18 @@ export const getPaginatedRecords = query({
   },
 });
 
+// Lightweight count — iterates without collecting all docs at once
+export const getRecordCount = query({
+  args: {},
+  handler: async (ctx) => {
+    let count = 0;
+    for await (const _ of ctx.db.query("dirtbikes")) {
+      count++;
+    }
+    return count;
+  },
+});
+
 // Get source content for a single record (for re-extraction)
 export const getRecordSource = query({
   args: { id: v.id("dirtbikes") },
