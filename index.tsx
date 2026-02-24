@@ -12,7 +12,10 @@ if (!clerkPubKey) {
 }
 
 // Convex client
-const convexUrl = "https://adjoining-kookabura-150.convex.cloud";
+const convexUrl = import.meta.env.VITE_CONVEX_URL;
+if (!convexUrl) {
+  throw new Error("Missing VITE_CONVEX_URL in environment variables");
+}
 const convex = new ConvexReactClient(convexUrl);
 
 const rootElement = document.getElementById('root');
